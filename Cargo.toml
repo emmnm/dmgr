@@ -1,0 +1,7 @@
+[package]
+name = "dmgr"
+version = "0.1.0"
+authors = ["Mike <meyerz.michael@gmail.com>"]
+
+[dependencies]
+sdl2 = "0.29"
