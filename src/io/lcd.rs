@@ -20,7 +20,7 @@ impl Lcd {
 
     pub fn new() -> Lcd {
         Lcd {
-            tiles: vec![vec![vec![0;8];8];384],
+            tiles: vec![vec![vec![0;8];8];192],
             //sprites: vec![Sprite::new_blank();40],
             background_palette: [0,1,2,3],
             foreground_palette: [[0,1,2,3],[0,1,2,3]],
@@ -29,6 +29,19 @@ impl Lcd {
             do_flush:false,
         }
     }
+
+    // fn update_tile(&mut self, offset:usize, val:u8) {
+    // //offset is the index into the vram.
+    // let low_addr = offset & !(0x01);
+    // let tile = offset >> 4; //each tile is 16bytes.
+    // let y = (offset >> 1) & 0x7; //8 heights, with top at offset 0.
+    // for x in 0..8 {
+    //     let index = 1 << (7 - x);
+    //     self.tiles[tile][y][x]
+    //         (if self.vram[low_addr] & index > 0 {1} else {0}) +
+    //         (if self.vram[low_addr+1] & index > 0 {2} else {0});
+    // }
+//}
 
     pub fn set_flush(&mut self, cond:bool) {
         self.do_flush = cond;
@@ -56,8 +69,47 @@ impl Lcd {
         if ctx.lcd().do_flush {
             Lcd::render_to_texture(ctx,renderer,texture);
             Lcd::flush(ctx,renderer,texture);
+            //Lcd::print_tiles(ctx);
         } else if ctx.lcd().do_render_scanline {
             //Lcd::render_scanline(ctx,renderer,texture)
+        }
+    }
+
+    // pub fn print_tile(ctx:&mut Context, tile:usize) {
+    //     println!("Tile 0x{:X}", tile);
+    //     for y in 0..8 {
+    //         for x in 0..8 {
+    //             match self.tiles[tile][y][x] {
+    //                 0x00 => {print!("_")}
+    //                 0x01 => {print!("▧")}
+    //                 0x02 => {print!("▩")}
+    //                 0x03 => {print!("■")}
+    //                 _ => {print!(" ")},
+    //             }
+    //         }
+    //         println!("");
+    //     }
+    // }
+
+    pub fn print_tiles(ctx:&mut Context) {
+        for t in 0..0x180 { //more than 255 of them.
+            //self.print_tile(t);
+        }
+        println!("Tilemap 9800");
+        for y in 0..32 {
+            for x in 0..32 {
+                let offset = y * 32 + x + 0x9800;
+                print!("{:02x} ",ctx.gpu().read_byte(offset));
+            }
+            println!("");
+        }
+        println!("Tilemap 9C00");
+        for y in 0..32 {
+            for x in 0..32 {
+                let offset = y * 32 + x + 0x9C00;
+                print!("{:02x} ",ctx.gpu().read_byte(offset));
+            }
+            println!("");
         }
     }
 
@@ -70,7 +122,7 @@ impl Lcd {
 
     pub fn render_to_texture(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture) {
         let lcd_control = ctx.gpu().get_lcd_control() as usize;
-        let scanline = ctx.gpu().get_scanline() as usize;
+        let bg_palette = ctx.gpu().get_bg_palette() as usize;
         let scroll_y = ctx.gpu().get_scroll_y() as usize;
         let scroll_x = ctx.gpu().get_scroll_x() as usize;
 
@@ -85,50 +137,51 @@ impl Lcd {
 
             // turn on disabling background.
             for sdl_y in 0..143 {
+
                 for sdl_x in 0..160 {
                     let world_y = sdl_y + scroll_y;
                     let world_x = scroll_x + sdl_x;
-
                     let tile_idx_y = world_y >> 3;
                     let tile_idx_x = world_x >> 3;
+                    let tile_pixel_y = world_y & 0x07;
+                    let tile_pixel_x = 0x07 - (world_x & 0x07);
 
                     let tile_mem_addr = background_map_addr + (tile_idx_y << 5) + tile_idx_x;
                     let mut tile = ctx.gpu().read_byte(tile_mem_addr as u16) as usize;
 
-                    // if tile_pattern_table == 0x8800 {
-                    //     // 0 lies around 9000, which is our tile[0x100]
-                    //     tile = (((tile as i8) as i32) + 0x100i32) as usize;
-                    // }
+                    let mut pixel_mem_addr = if tile_pattern_data == 0x8800 {
+                        ((0x9000 as i32) +
+                            (((tile as i8) as i32) << 4)) as usize
+                    } else {
+                        ((tile << 4) + tile_pattern_data)
+                    };
 
-                    let tile_pixel_y = world_y & 0x07;
-                    let tile_pixel_x = 0x07 - (world_x & 0x07);
-
-                    let pixel_mem_addr = (tile_pattern_data + (tile << 4) + (tile_pixel_y << 1));
-                    let high = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
-                    let low = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
-                    let col = ((0x01 & high) << 1) | (0x01 & low);
-
-                    let rgb = COLORS[col as usize].rgb();
+                    pixel_mem_addr += (tile_pixel_y << 1);
+                    let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
+                    let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
+                    let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
+                    let mask = bg_palette >> (col << 1);
+                    let rgb = COLORS[0x03 & mask as usize].rgb();
                     buffer[pitch * sdl_y + 3 * sdl_x + 0] = rgb.0;
                     buffer[pitch * sdl_y + 3 * sdl_x + 1] = rgb.1;
                     buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
                 }
             }
 
-
             if 0x02 & lcd_control > 0x00 {
                 for idx in 0..40 { //40 sprites in OAM.
                     let sprite_addr = (0xFE00 + (idx << 2)) as u16; //4B wide.
-                    let sprite_y = (ctx.gpu().read_byte(sprite_addr) as i32 - 16) as usize;
-                    let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as usize;
+                    let sprite_y = (ctx.gpu().read_byte(sprite_addr) as i32 - 16) as isize;
+                    let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as isize;
 
                     for sdl_y in sprite_y..sprite_y+8 {
                         for sdl_x in sprite_x..sprite_x+8 {
                             if sdl_y < 144 && sdl_x < 160 {
-                                let offset = pitch * sdl_y + 3 * sdl_x;
-                                buffer[offset + 0] = 0xCC;
-                                buffer[offset + 1] = 0xCC;
-                                buffer[offset + 2] = 0xCC;
+                                let offset = (pitch as isize) * sdl_y + 3 * sdl_x;
+                                let offset2 = offset as usize;
+                                buffer[offset2 + 0] = 0xCC;
+                                buffer[offset2 + 1] = 0xCC;
+                                buffer[offset2 + 2] = 0xCC;
                             }
                         }
                     }

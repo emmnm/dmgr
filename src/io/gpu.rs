@@ -52,6 +52,8 @@ impl Gpu {
     pub fn get_scroll_x(&self) -> u8 { self.scroll_x }
     pub fn get_scanline(&self) -> u8 { self.scanline }
 
+    pub fn get_bg_palette(&self) -> u8 { self.bg_palette }
+
     pub fn write_dma(&mut self, data:&[u8]) {
         for idx in 0x00..0xA0 {
             self.oam[idx] = data[idx];
