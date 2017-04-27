@@ -6,22 +6,31 @@ use cpu::registers::ByteRegister::*;
 use cpu::registers::WordRegister::*;
 use cpu::registers::FlagType::*;
 
+static mut CURR_OP: u8 = 0;
+
 pub fn step(ctx: &mut Context) -> usize {
+    if ctx.suspend {
+        return 1;
+    }
     let mut pc = getw(ctx,PC);
     setw(ctx,PC,pc+1);
     let mut opcode = mmu::read_byte(ctx,pc);
-    print!("0x{:04X}\t",pc);
+    // print!("0x{:04X}\t",pc);
 
     let (time, func) = if opcode == 0xCB {
-        print!("0xCB");
+        // print!("0xCB");
         opcode = mmu::read_byte(ctx,pc+1);
         setw(ctx,PC,pc+2);
         CBOPS[opcode as usize]
     } else {
-        print!("0x");
+        // print!("0x");
         OPS[opcode as usize]
     };
-    println!("{:02X}",opcode);
+    // println!("{:02X}",opcode);
+    unsafe {
+        CURR_OP = opcode;
+
+    }
     let actual = func(ctx);
     if actual > time {
         actual
@@ -31,19 +40,83 @@ pub fn step(ctx: &mut Context) -> usize {
 }
 
 pub fn handle_interrupts(ctx:&mut Context) {
-    //panic!("NEED TO HANDLE INTERRUPTS");
+    if ctx.ints().is_master_enabled() {
+        let filtered = ctx.ints().read_filtered();
+        if filtered > 0x00 {
+            ctx.suspend = false;
+        }
+        if 0x01 & filtered > 0 {
+            ctx.ints().disable();
+            ctx.ints().clear(0x01);
+            rst(ctx,0x40);
+        } else if 0x02 & filtered > 0 {
+            ctx.ints().disable();
+            ctx.ints().clear(0x02);
+            rst(ctx,0x48);
+        } //else if 0x04 & filtered > 0 {
+        //    ctx.ints().disable();
+        //    ctx.ints().clear(0x04);
+            //rst(ctx,0x50);
+        //}
+    }
+//     } else if ints & 0x08 > 0 { // Serial
+//         self.ime = false;
+//         self.memory.set_interrupts(ints & !0x08);
+//         self.serial()
+//     } else if ints & 0x10 > 0 { // Joypad
+//         self.ime = false;
+//         self.memory.set_interrupts(ints & !0x10);
+//         self.joypad()
+//     }
+// }
 }
 
 pub fn fail(ctx: &mut Context) -> usize {
-    panic!("Supposed to fail!");
+    unsafe {
+        panic!("Supposed to fail! 0x{:02X}",CURR_OP);
+    }
+}
+
+pub fn invalid(ctx: &mut Context) -> usize {
+    panic!("Invalid instruction");
 }
 
 pub fn halt(ctx: &mut Context) -> usize {
-    panic!("halt!");
+    ctx.suspend = true;
     1
 }
 
 pub fn nop(ctx: &mut Context) -> usize {
+    1
+}
+
+pub fn daa(ctx:&mut Context) -> usize {
+    let mut a = getb(ctx,A) as i32;
+    if getf(ctx,Nf) {
+        if getf(ctx,Hf) { a = (a - 0x06) & 0xFF }
+        if getf(ctx,Cf) { a -= 0x60 }
+    } else {
+        if getf(ctx,Hf) || (a & 0x0F) > 9 { a += 0x06 }
+        if getf(ctx,Cf) || a > 0x9F { a += 0x60 }
+    }
+    let mut newflags = !(0x80 | 0x20);
+    if (a & 0x100) == 0x100 {
+        newflags |= 0x10;
+    }
+    setb(ctx,A,a as u8);
+    setf(ctx,Zf,(a as u8) == 0x00);
+    setf(ctx,Hf,false);
+    setf(ctx,Cf,a > 0x100);
+    1
+}
+
+pub fn di(ctx: &mut Context) -> usize {
+    ctx.ints().disable();
+    1
+}
+
+pub fn ei(ctx: &mut Context) -> usize {
+    ctx.ints().enable();
     1
 }
 
@@ -83,6 +156,7 @@ pub fn incw(ctx:&mut Context, r:WordRegister) -> usize {
     setw(ctx,r,(val+1) as u16);
     2
 }
+
 pub fn decw(ctx:&mut Context, r:WordRegister) -> usize {
     let val = getw(ctx,r) as i32;
     setw(ctx,r,(val-1) as u16);
@@ -90,11 +164,35 @@ pub fn decw(ctx:&mut Context, r:WordRegister) -> usize {
 }
 
 pub fn add(ctx:&mut Context, r:ByteRegister) -> usize {
-    panic!("Add not implemented");
+    let (tv, fv) = (getb(ctx,A),getb(ctx,r));
+    let res = (tv as u16) + (fv as u16);
+    setb(ctx,A,res as u8);
+    setf(ctx,Zf,(res as u8) == 0);
+    setf(ctx,Nf,false);
+    setf(ctx,Hf,((tv & 0x0f) + (fv & 0x0f)) > 0x0f);
+    setf(ctx,Cf,(res & 0xff00) > 0);
     1
 }
+
+pub fn addw(ctx:&mut Context, to:WordRegister, from:WordRegister) -> usize {
+    let (tv,fv) = (getw(ctx,to) as u32, getw(ctx,from) as u32);
+    let result = tv + fv;
+    setw(ctx,to,result as u16);
+    setf(ctx,Nf,false);
+    setf(ctx,Hf,(tv & 0x0fff) + (fv & 0x0fff) > 0x0fff);
+    setf(ctx,Cf,result & 0xffff0000 > 0);
+    2
+}
+
 pub fn adc(ctx:&mut Context, r:ByteRegister) -> usize {
-    panic!("Adc not implemented");
+    let (av,rv) = (getb(ctx,A),getb(ctx,r));
+    let cv = if getf(ctx,Cf) {1} else {0};
+    let res = (av as u16) + (rv as u16) + (cv as u16);
+    setb(ctx,A,res as u8);
+    setf(ctx,Zf,res as u8 == 0x00);
+    setf(ctx,Nf,false);
+    setf(ctx,Hf,((av & 0x0f) + (rv & 0x0f) + (cv & 0x0f)) > 0x0f);
+    setf(ctx,Cf,res & 0xff00 > 0);
     1
 }
 
@@ -109,6 +207,18 @@ pub fn sub(ctx:&mut Context, r:ByteRegister) -> usize {
     1
 }
 
+pub fn sbc(ctx:&mut Context, r:ByteRegister) -> usize {
+    let av = getb(ctx,A);
+    let rv = getb(ctx,r).wrapping_add(if getf(ctx,Cf) {1} else {0});
+    let result = av.wrapping_sub(rv);
+    setb(ctx,A,result);
+    setf(ctx,Zf, av == rv);
+    setf(ctx,Nf,true);
+    setf(ctx,Hf,((av & 0x0f) > (rv & 0x0f)));
+    setf(ctx,Cf,rv > av);
+    1
+}
+
 pub fn cp(ctx: &mut Context, r:ByteRegister) -> usize {
     let a_val = getb(ctx,A);
     let r_val = getb(ctx,r);
@@ -119,8 +229,27 @@ pub fn cp(ctx: &mut Context, r:ByteRegister) -> usize {
     1
 }
 
+pub fn cpl(ctx: &mut Context) -> usize {
+    let val = getb(ctx,A);
+    setb(ctx,A,!val);
+    setf(ctx,Nf,true);
+    setf(ctx,Hf,true);
+    1
+}
 
-
+pub fn scf(ctx: &mut Context) -> usize {
+    setf(ctx,Nf,false);
+    setf(ctx,Hf,false);
+    setf(ctx,Cf,true);
+    1
+}
+pub fn ccf(ctx: &mut Context) -> usize {
+    let carry = getf(ctx,Cf);
+    setf(ctx,Cf,!carry);
+    setf(ctx,Hf,false);
+    setf(ctx,Nf,false);
+    1
+}
 
 
 pub fn xor(ctx: &mut Context, r: ByteRegister) -> usize {
@@ -135,11 +264,30 @@ pub fn xor(ctx: &mut Context, r: ByteRegister) -> usize {
 pub fn and(ctx: &mut Context, r: ByteRegister) -> usize {
     let a_val = getb(ctx,A);
     let r_val = getb(ctx,r);
-    setb(ctx,A,a_val & r_val);
+    let res = a_val & r_val;
+    setb(ctx,A,res);
     setb(ctx,F,0x00);
+    setf(ctx,Zf,res == 0x00);
     setf(ctx,Hf,true);
-    setf(ctx,Zf,a_val == r_val);
     0
+}
+
+pub fn or(ctx: &mut Context, r: ByteRegister) -> usize {
+    let a_val = getb(ctx,A);
+    let r_val = getb(ctx,r);
+    let res = a_val | r_val;
+    setb(ctx,F,0);
+    setf(ctx,Zf,res == 0x00);
+    1
+}
+
+pub fn swap(ctx:&mut Context, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = ((value & 0xf) << 4) | ((value & 0xf0) >> 4);
+    setb(ctx,r,result);
+    setb(ctx,F,0);
+    setf(ctx,Zf,result == 0x00);
+    2
 }
 
 pub fn bit(ctx: &mut Context, idx:usize, r: ByteRegister) -> usize {
@@ -147,7 +295,21 @@ pub fn bit(ctx: &mut Context, idx:usize, r: ByteRegister) -> usize {
     setf(ctx,Zf,(r_val & (0x01 << idx)) == 0x00);
     setf(ctx,Nf,false);
     setf(ctx,Hf,true);
-    0
+    2
+}
+
+pub fn res(ctx: &mut Context, idx:usize, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = value & !(1 << idx);
+    setb(ctx,r,result);
+    2
+}
+
+pub fn set(ctx: &mut Context, idx:usize, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = value | (1 << idx);
+    setb(ctx,r,result);
+    2
 }
 
 pub fn rla(ctx:&mut Context) -> usize {
@@ -155,9 +317,7 @@ pub fn rla(ctx:&mut Context) -> usize {
     let value = getb(ctx,A);
     let result = (value << 1) | low;
     setb(ctx,A,result);
-    setf(ctx,Zf,false);
-    setf(ctx,Nf,false);
-    setf(ctx,Hf,false);
+    setb(ctx,F,0);
     setf(ctx,Cf,(value & 0x80) > 0x00);
     1
 }
@@ -167,10 +327,98 @@ pub fn rl(ctx: &mut Context, r:ByteRegister) -> usize {
     let low = if getf(ctx,Cf) {1} else {0};
     let res = (val << 1) + low;
     setb(ctx,r,res);
+    setb(ctx,F,0);
     setf(ctx,Zf,res == 0x00);
-    setf(ctx,Nf,false);
-    setf(ctx,Hf,false);
     setf(ctx,Cf,0x80 & val > 0x00);
+    2
+}
+
+pub fn rlc(ctx: &mut Context, r:ByteRegister) -> usize {
+    let val = getb(ctx,r);
+    let carry = (val & 0x80) >> 7;
+    let result = (val << 1) + carry;
+    setb(ctx,r,result);
+    setb(ctx,F,0);
+    setf(ctx,Zf,result == 0x00);
+    setf(ctx,Cf,carry != 0x00);
+    2
+}
+
+pub fn rr(ctx: &mut Context, r:ByteRegister) -> usize {
+    let mut value = getb(ctx,r);
+    value >>= 1;
+    if getf(ctx,Cf) { value |= 0x80; }
+    setb(ctx,r,value);
+    setb(ctx,F,0);
+    setf(ctx,Zf,value == 0x00);
+    setf(ctx,Cf,(value & 0x01) > 0x00);
+    2
+}
+
+pub fn rrc(ctx: &mut Context, r:ByteRegister) -> usize {
+    let mut value = getb(ctx,r);
+    let carry = value & 0x01;
+    value >>= 1;
+    if carry != 0x00 {
+        value |= 0x80;
+    };
+    setb(ctx,r,value);
+    setb(ctx,F,0);
+    setf(ctx,Zf,value == 0);
+    setf(ctx,Cf,carry != 0x00);
+    2
+}
+
+pub fn rlca(ctx:&mut Context) -> usize {
+    let val = getb(ctx,A);
+    let high = (val & 0x80) >> 7;
+    let res = (val << 1) | high;
+    setb(ctx,A,res);
+    setb(ctx,F,0);
+    setf(ctx,Cf,high > 0x00);
+    1
+}
+
+pub fn rrca(ctx:&mut Context) -> usize {
+    let val = getb(ctx,A);
+    let carry = 0x01 & val;
+    let mut result = val >> 1;
+    if carry != 0x00 {
+        result |= 0x80;
+    }
+    setb(ctx,A,result);
+    setb(ctx,F,0);
+    setf(ctx,Cf,carry != 0x00);
+    1
+}
+
+pub fn sla(ctx:&mut Context, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = value << 1;
+    setb(ctx,r,result);
+    setb(ctx,F,0);
+    setf(ctx,Zf,result == 0x00);
+    setf(ctx,Cf,value & 0x80 > 0x00);
+    2
+}
+
+pub fn sra(ctx:&mut Context, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = (value & 0x80) | (value >> 1);
+    setb(ctx,r,result);
+    setb(ctx,F,0);
+    setf(ctx,Zf,result == 0x00);
+    setf(ctx,Cf,value & 0x01 != 0x00);
+    2
+}
+
+pub fn srl(ctx:&mut Context, r:ByteRegister) -> usize {
+    let value = getb(ctx,r);
+    let result = value >> 1;
+    setb(ctx,r,result);
+    setb(ctx,F,0);
+    setf(ctx,Zf,result == 0x00);
+    setf(ctx,Cf,value & 0x01 != 0x00);
     2
 }
 
@@ -189,6 +437,28 @@ pub fn jrf(ctx: &mut Context, f:FlagType, cond:bool) -> usize {
         3
     } else {
         2
+    }
+}
+
+pub fn jp(ctx: &mut Context) -> usize {
+    let addr = getw(ctx,DIMM);
+    setw(ctx,PC,addr);
+    4
+}
+
+pub fn jphl(ctx: &mut Context) -> usize {
+    let addr = getw(ctx,HL);
+    setw(ctx,PC,addr);
+    1
+}
+
+pub fn jpf(ctx: &mut Context, f:FlagType, cond:bool) -> usize {
+    let addr = getw(ctx,DIMM);
+    if getf(ctx,f) == cond {
+        setw(ctx,PC,addr);
+        4
+    } else {
+        3
     }
 }
 
@@ -213,7 +483,15 @@ pub fn call(ctx: &mut Context) -> usize {
 }
 
 pub fn callf(ctx: &mut Context, f:FlagType, cond:bool) -> usize {
-    panic!("not implemented")
+    let imm = getw(ctx,DIMM);
+    if getf(ctx,f) == cond {
+        let pc = getw(ctx,PC);
+        to_stack(ctx,pc);
+        setw(ctx,PC,imm);
+        6
+    } else {
+        3
+    }
 }
 
 pub fn ret(ctx: &mut Context) -> usize {
@@ -223,6 +501,25 @@ pub fn ret(ctx: &mut Context) -> usize {
 }
 
 pub fn retf(ctx: &mut Context, f:FlagType, cond:bool) -> usize {
-    panic!("not implemented");
-    2
+    if getf(ctx,f) == cond {
+        let addr = from_stack(ctx);
+        setw(ctx,PC,addr);
+        5
+    } else {
+        2
+    }
+}
+
+pub fn reti(ctx:&mut Context) -> usize {
+    ctx.ints().enable();
+    let addr = from_stack(ctx);
+    setw(ctx,PC,addr);
+    4
+}
+
+pub fn rst(ctx:&mut Context, addr:u16) -> usize {
+    let pc = getw(ctx,PC);
+    to_stack(ctx,pc);
+    setw(ctx,PC,addr);
+    4
 }

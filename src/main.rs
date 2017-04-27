@@ -1,4 +1,7 @@
 extern crate sdl2;
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::render::Texture;
+
 use std::time::{Duration, Instant};
 use std::thread;
 use std::env;
@@ -9,10 +12,10 @@ mod cart;
 mod cpu;
 mod io;
 
-use constants::CYCLES_PER_SECOND;
+use constants::{WINDOW_SCALE,CYCLES_PER_SECOND};
 use context::Context;
-use cart::Cartridge;
 use cpu::mmu;
+use io::{Gpu,Timer,Lcd,Joypad};
 
 fn main() {
 
@@ -22,9 +25,21 @@ fn main() {
         return;
     }
 
-    let mut ctx = Context::new(argv[1].clone());
-    println!("read cartridge: {:?}",ctx.cart());
+    let sdl_handle = sdl2::init().unwrap();
 
+    let video_handle = sdl_handle.video().unwrap();
+    let window = video_handle.window("RGB Emulator",WINDOW_SCALE * 160, WINDOW_SCALE * 144)
+         .position_centered()
+         .opengl()
+         .build().unwrap();
+    let mut renderer = window.renderer()
+         .build().unwrap();
+    let mut texture = renderer.create_texture_streaming(
+        PixelFormatEnum::RGB24, 160, 144).unwrap();
+
+    let mut ctx = Context::new(argv[1].clone());
+    let mut event_pump = sdl_handle.event_pump().unwrap();
+    println!("read cartridge: {:?}",ctx.cart());
 
     ctx.reset();
     loop {
@@ -32,10 +47,15 @@ fn main() {
 
         /* Run number of cycles required */
         let mut cycle_count = 0;
-        while cycle_count < CYCLES_PER_SECOND {
+        while cycle_count < (CYCLES_PER_SECOND) {
             //println!("reg {:?}",ctx.reg());
             let cycles = cpu::step(&mut ctx);
-            mmu::step(&mut ctx,cycles);
+            //mmu::step(&mut ctx,&mut renderer, &mut texture, cycles);
+            Gpu::step(&mut ctx,cycles);
+            Lcd::step(&mut ctx,&mut renderer,&mut texture,cycles);
+            Timer::step(&mut ctx,cycles);
+            Joypad::step(&mut ctx,&mut event_pump, cycles);
+
             cpu::handle_interrupts(&mut ctx);
             cycle_count += cycles;
         }
@@ -51,6 +71,8 @@ fn main() {
 
             println!("Finished in {:.08}", seconds);
             thread::sleep(sleep_time);
+        } else {
+            println!("Taking long!");
         }
 
     }

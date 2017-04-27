@@ -76,6 +76,16 @@ pub fn getb(ctx:&mut Context, r:ByteRegister) -> u8 {
             let addr = getw(ctx,wr);
             mmu::read_byte(ctx,addr)
         }
+        ByteRegister::MEMINC(wr) => {
+            let addr = getw(ctx,wr);
+            setw(ctx,wr,addr+1);
+            mmu::read_byte(ctx,addr)
+        }
+        ByteRegister::MEMDEC(wr) => {
+            let addr = getw(ctx,wr);
+            setw(ctx,wr,addr-1);
+            mmu::read_byte(ctx,addr)
+        }
         ByteRegister::MEM_FF00_C => {
             let addr = 0xFF00u16 + getb(ctx,C) as u16;
             mmu::read_byte(ctx,addr)
@@ -84,7 +94,7 @@ pub fn getb(ctx:&mut Context, r:ByteRegister) -> u8 {
             let addr = 0xFF00u16 + getb(ctx,IMM) as u16;
             mmu::read_byte(ctx,addr)
         }
-        _ => {panic!("Not supported {:?}",r)}
+        //_ => {panic!("Not supported {:?}",r)}
     }
 }
 

@@ -5,12 +5,13 @@ use sdl2::pixels::Color;
 
 pub const CYCLES_PER_SECOND: usize = 4194304;
 pub const CYCLES_PER_FRAME: usize = 69905;
+pub const WINDOW_SCALE: u32 = 2;
 
-const WHITE: Color = Color::RGB(232,252,204);
-const LIGHT_GRAY: Color = Color::RGB(172,212,144);
-const DARK_GRAY: Color = Color::RGB(84,140,112);
-const BLACK: Color = Color::RGB(20,44,56);
-const COLORS:[Color;4] = [
+pub const WHITE: Color = Color::RGB(232,252,204);
+pub const LIGHT_GRAY: Color = Color::RGB(172,212,144);
+pub const DARK_GRAY: Color = Color::RGB(84,140,112);
+pub const BLACK: Color = Color::RGB(20,44,56);
+pub const COLORS:[Color;4] = [
     WHITE,
     LIGHT_GRAY,
     DARK_GRAY,
