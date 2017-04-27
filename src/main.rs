@@ -43,7 +43,7 @@ fn main() {
     let mut event_pump = sdl_handle.event_pump().unwrap();
     println!("read cartridge: {:?}",ctx.cart());
 
-    let mut pcbreak = 0xFFFF;
+    let mut pcbreak = 0x0000;
     let mut step = false;
     let mut do_print = false;
     ctx.reset();

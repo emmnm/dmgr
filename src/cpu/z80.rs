@@ -126,7 +126,7 @@ pub fn ei(ctx: &mut Context) -> usize {
 pub fn ldb(ctx: &mut Context, to:ByteRegister, from:ByteRegister) -> usize {
     let val = getb(ctx,from);
     setb(ctx,to,val);
-    0
+    1
 }
 
 pub fn ldw(ctx: &mut Context, to:WordRegister,from:WordRegister) -> usize {
@@ -279,6 +279,7 @@ pub fn or(ctx: &mut Context, r: ByteRegister) -> usize {
     let a_val = getb(ctx,A);
     let r_val = getb(ctx,r);
     let res = a_val | r_val;
+    setb(ctx,A,res);
     setb(ctx,F,0);
     setf(ctx,Zf,res == 0x00);
     1
