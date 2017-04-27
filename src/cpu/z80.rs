@@ -45,6 +45,7 @@ pub fn handle_interrupts(ctx:&mut Context) {
         if filtered > 0x00 {
             ctx.suspend = false;
         }
+
         if 0x01 & filtered > 0 {
             ctx.ints().disable();
             ctx.ints().clear(0x01);
@@ -53,22 +54,20 @@ pub fn handle_interrupts(ctx:&mut Context) {
             ctx.ints().disable();
             ctx.ints().clear(0x02);
             rst(ctx,0x48);
-        } //else if 0x04 & filtered > 0 {
-        //    ctx.ints().disable();
-        //    ctx.ints().clear(0x04);
-            //rst(ctx,0x50);
-        //}
+        } else if 0x04 & filtered > 0 {
+            ctx.ints().disable();
+            ctx.ints().clear(0x04);
+            rst(ctx,0x50);
+        } else if 0x08 & filtered > 0 {
+            ctx.ints().disable();
+            ctx.ints().clear(0x08);
+            rst(ctx,0x58);
+        } else if 0x10 & filtered > 0 {
+            ctx.ints().disable();
+            ctx.ints().clear(0x10);
+            rst(ctx,0x60);
+        }
     }
-//     } else if ints & 0x08 > 0 { // Serial
-//         self.ime = false;
-//         self.memory.set_interrupts(ints & !0x08);
-//         self.serial()
-//     } else if ints & 0x10 > 0 { // Joypad
-//         self.ime = false;
-//         self.memory.set_interrupts(ints & !0x10);
-//         self.joypad()
-//     }
-// }
 }
 
 pub fn fail(ctx: &mut Context) -> usize {
@@ -79,6 +78,10 @@ pub fn fail(ctx: &mut Context) -> usize {
 
 pub fn invalid(ctx: &mut Context) -> usize {
     panic!("Invalid instruction");
+}
+
+pub fn stop(ctx: &mut Context) -> usize {
+    panic!("Turning off machine");
 }
 
 pub fn halt(ctx: &mut Context) -> usize {
@@ -353,6 +356,16 @@ pub fn rr(ctx: &mut Context, r:ByteRegister) -> usize {
     setf(ctx,Zf,value == 0x00);
     setf(ctx,Cf,(value & 0x01) > 0x00);
     2
+}
+
+pub fn rra(ctx:&mut Context) -> usize {
+    let carry = if getf(ctx,Cf) {0x80} else {0x00};
+    let value = getb(ctx,A);
+    let result = (value >> 1) + carry;
+    setb(ctx,A,result);
+    setb(ctx,F,0);
+    setf(ctx,Cf,(value & 0x01) > 0x00);
+    1
 }
 
 pub fn rrc(ctx: &mut Context, r:ByteRegister) -> usize {

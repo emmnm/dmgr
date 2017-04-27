@@ -14,7 +14,7 @@ impl Mbc1 {
         Mbc1 {
             bytes:bytes,
             ram: vec![0; 0x8000],
-            rom_bank: 0,
+            rom_bank: 0x01,
             ram_bank: 0,
             ram_enable: false,
             rom_select: true,
@@ -36,8 +36,8 @@ impl ByteIO for Mbc1 {
     fn read_byte(&self, addr:u16) -> u8 {
         let idx = addr as usize;
         match addr {
-            0x0000...0x3FFF => {self.bytes[idx]},
-            0x4000...0x7FFF => {self.bytes[(idx - 0x4000) + 0x4000 * self.rom_bank] }, // here!
+            0x0000...0x3FFF => { self.bytes[idx]},
+            0x4000...0x7FFF => { self.bytes[(idx - 0x4000) + 0x4000 * self.rom_bank] }, // here!
             0xA000...0xBFFF => { self.ram[(idx-0xA000) + 0x2000 * self.ram_bank] },
             _ => {panic!("Invalid mbc1 read location! 0x{:04X}",addr)},
         }

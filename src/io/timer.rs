@@ -28,28 +28,33 @@ impl Timer {
         Timer {control:0,counter:0,modulo:0,divider:0,internal_divider:0,internal_counter:0}
     }
 
-    pub fn step(ctx:&mut Context, num_cycles:usize) -> bool {
-        let timer = ctx.timer();
-        //divider increases by one every 256 instructions.
-        timer.internal_divider += num_cycles;
-        if timer.internal_divider > 0xFF {
-            timer.divider = timer.divider.wrapping_add(1);
-            timer.internal_divider = 0;
-        }
+    pub fn step(ctx:&mut Context, num_cycles:usize) {
+        let mut flag = false;
+        {
+            let timer = ctx.timer();
+            //divider increases by one every 256 instructions.
+            timer.internal_divider += num_cycles;
+            if timer.internal_divider > 0xFF {
+                timer.divider = timer.divider.wrapping_add(1);
+                timer.internal_divider = 0;
+            }
 
-        // counter goes up at variable speed.
-        if timer.control & 0x04 > 0x00 {
-            timer.internal_counter += num_cycles;
-            if timer.internal_counter > timer.clock_period() {
-                timer.counter = timer.counter.wrapping_add(1);
-                timer.internal_counter = 0;
+            // counter goes up at variable speed.
+            if timer.control & 0x04 > 0x00 {
+                timer.internal_counter += num_cycles;
+                if timer.internal_counter > timer.clock_period() {
+                    timer.counter = timer.counter.wrapping_add(1);
+                    timer.internal_counter = 0;
 
-                if timer.counter == 0x00 {
-                    return true;
+                    if timer.counter == 0x00 {
+                        flag = true;
+                    }
                 }
             }
         }
-        return false;
+        if flag {
+            ctx.ints().request(0x04);
+        }
     }
 
     /// Calculates the number of cycles per Interrupt

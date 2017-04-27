@@ -94,6 +94,7 @@ impl ByteIO for Gpu {
             0xFF41 => self.lcd_status |= 0x78 & val,
             0xFF42 => self.scroll_y = val,
             0xFF43 => self.scroll_x = val,
+            0xFF45 => self.compare = val,
             //0xFF46 => self.bg_palette = val,
             0xFF47 => self.bg_palette = val,
             0xFF48 => self.fg_palette_0 = val,

@@ -69,7 +69,6 @@ impl Lcd {
         if ctx.lcd().do_flush {
             Lcd::render_to_texture(ctx,renderer,texture);
             Lcd::flush(ctx,renderer,texture);
-            //Lcd::print_tiles(ctx);
         } else if ctx.lcd().do_render_scanline {
             //Lcd::render_scanline(ctx,renderer,texture)
         }
@@ -139,8 +138,8 @@ impl Lcd {
             for sdl_y in 0..143 {
 
                 for sdl_x in 0..160 {
-                    let world_y = sdl_y + scroll_y;
-                    let world_x = scroll_x + sdl_x;
+                    let world_y = (sdl_y + scroll_y) % 256;
+                    let world_x = (scroll_x + sdl_x) % 256;
                     let tile_idx_y = world_y >> 3;
                     let tile_idx_x = world_x >> 3;
                     let tile_pixel_y = world_y & 0x07;
@@ -167,26 +166,26 @@ impl Lcd {
                     buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
                 }
             }
-
-            if 0x02 & lcd_control > 0x00 {
-                for idx in 0..40 { //40 sprites in OAM.
-                    let sprite_addr = (0xFE00 + (idx << 2)) as u16; //4B wide.
-                    let sprite_y = (ctx.gpu().read_byte(sprite_addr) as i32 - 16) as isize;
-                    let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as isize;
-
-                    for sdl_y in sprite_y..sprite_y+8 {
-                        for sdl_x in sprite_x..sprite_x+8 {
-                            if sdl_y < 144 && sdl_x < 160 {
-                                let offset = (pitch as isize) * sdl_y + 3 * sdl_x;
-                                let offset2 = offset as usize;
-                                buffer[offset2 + 0] = 0xCC;
-                                buffer[offset2 + 1] = 0xCC;
-                                buffer[offset2 + 2] = 0xCC;
-                            }
-                        }
-                    }
-                }
-            }
+            //
+            // if 0x02 & lcd_control > 0x00 {
+            //     for idx in 0..40 { //40 sprites in OAM.
+            //         let sprite_addr = (0xFE00 + (idx << 2)) as u16; //4B wide.
+            //         let sprite_y = (ctx.gpu().read_byte(sprite_addr) as i32 - 16) as isize;
+            //         let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as isize;
+            //
+            //         for sdl_y in sprite_y..sprite_y+8 {
+            //             for sdl_x in sprite_x..sprite_x+8 {
+            //                 if sdl_y < 144 && sdl_x < 160 {
+            //                     let offset = (pitch as isize) * sdl_y + 3 * sdl_x;
+            //                     let offset2 = offset as usize;
+            //                     buffer[offset2 + 0] = 0xCC;
+            //                     buffer[offset2 + 1] = 0xCC;
+            //                     buffer[offset2 + 2] = 0xCC;
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
 
 //             if self.control & 0x02 > 0x00 {
 //     ctx.texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {

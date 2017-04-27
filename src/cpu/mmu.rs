@@ -62,6 +62,7 @@ pub fn write_byte(ctx:&mut Context, addr:u16, val:u8) {
             }
         },
         0x8000...0x9FFF => ctx.gpu().write_byte(addr,val),
+        0xA000...0xBFFF => ctx.cart().write_byte(addr,val),
         0xC000...0xCFFF => ctx.wb0()[idx-0xC000] = val,
         0xD000...0xDFFF => ctx.wb1()[idx-0xD000] = val,
         0xE000...0xEFFF => ctx.wb0()[idx-0xE000] = val,
@@ -80,7 +81,7 @@ pub fn write_byte(ctx:&mut Context, addr:u16, val:u8) {
             ctx.gpu().write_dma(&data);
         },
         0xFF40...0xFF4B => ctx.gpu().write_byte(addr,val),
-        0xFF50 => ctx.leave_bios(),
+        0xFF50 => {println!("Leaving bios"); ctx.leave_bios()},
         //0xFF50 => panic!("Left bios"),
         0xFF4C...0xFF7F => {}, //empty io.
         0xFF80...0xFFFE => ctx.hram()[idx-0xFF80] = val,

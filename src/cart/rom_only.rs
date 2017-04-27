@@ -22,7 +22,7 @@ impl ByteIO for RomOnly {
 
     fn write_byte(&mut self, addr:u16, val:u8) {
 
-        //panic!("invalid rom_only write: 0x{:04x}",addr)
+        panic!("invalid rom_only write: 0x{:04x}",addr)
     }
 
 }

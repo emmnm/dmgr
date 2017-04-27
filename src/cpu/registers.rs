@@ -177,7 +177,6 @@ pub fn getw(ctx:&mut Context, r:WordRegister) -> u16 {
             ctx.reg().pc += 2;
             mmu::read_word(ctx,addr)
         },
-        //_ => panic!("not implemented {:?}",r)
     }
 }
 

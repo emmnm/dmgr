@@ -2,6 +2,7 @@ extern crate sdl2;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::Texture;
 
+use std::io::Write;
 use std::time::{Duration, Instant};
 use std::thread;
 use std::env;
@@ -14,7 +15,8 @@ mod io;
 
 use constants::{WINDOW_SCALE,CYCLES_PER_SECOND};
 use context::Context;
-use cpu::mmu;
+use cpu::registers::getw;
+use cpu::registers::WordRegister::PC;
 use io::{Gpu,Timer,Lcd,Joypad};
 
 fn main() {
@@ -41,6 +43,9 @@ fn main() {
     let mut event_pump = sdl_handle.event_pump().unwrap();
     println!("read cartridge: {:?}",ctx.cart());
 
+    let mut pcbreak = 0xFFFF;
+    let mut step = false;
+    let mut do_print = false;
     ctx.reset();
     loop {
         let start = Instant::now();
@@ -48,7 +53,37 @@ fn main() {
         /* Run number of cycles required */
         let mut cycle_count = 0;
         while cycle_count < (CYCLES_PER_SECOND) {
-            //println!("reg {:?}",ctx.reg());
+            //
+            let curr_pc = getw(&mut ctx, PC);
+            if step || do_print {
+                //print!("{:?}",ctx.reg());
+            }
+            if curr_pc == pcbreak || step {
+                print!("{:?} (0xXXXX/s/c): ",ctx.reg());
+                std::io::stdout().flush().unwrap();
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).unwrap();
+                print!("\r");
+                if input.trim() == "" {
+                    step = true;
+                } else if input.trim() == "s" {
+                    step = true;
+                } else if input.trim() == "c" {
+                    step = false;
+                    pcbreak = 0x0000;
+                } else if input.trim() == "t" {
+                    Lcd::print_tiles(&mut ctx);
+                    std::io::stdin().read_line(&mut input).unwrap();
+                } else if input.trim() == "py" {
+                    do_print = true;
+                } else if input.trim() == "pn" {
+                    do_print = false;
+                } else {
+                    pcbreak = u16::from_str_radix(input.trim(), 16).unwrap();
+                    step = false;
+                }
+            }
+
             let cycles = cpu::step(&mut ctx);
             //mmu::step(&mut ctx,&mut renderer, &mut texture, cycles);
             Gpu::step(&mut ctx,cycles);
@@ -74,6 +109,5 @@ fn main() {
         } else {
             println!("Taking long!");
         }
-
     }
 }

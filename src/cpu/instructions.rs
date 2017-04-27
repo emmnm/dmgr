@@ -28,8 +28,7 @@ pub const OPS:[(usize,&'static Fn(&mut Context) -> usize); 256] = [
     (1, &|ctx| {rrca(ctx)}), // XF
 
     // 1X
-    (1, &|ctx| {fail(ctx)}), // X0
-
+    (1, &|ctx| {stop(ctx)}), // X0
     (3, &|ctx| {ldw(ctx,DE,DIMM)}), // X1
     (2, &|ctx| {ldb(ctx,MEM(DE),A)}), // X2
     (2, &|ctx| {incw(ctx,DE)}), // X3
@@ -44,8 +43,7 @@ pub const OPS:[(usize,&'static Fn(&mut Context) -> usize); 256] = [
     (1, &|ctx| {incb(ctx,E)}), // XC
     (1, &|ctx| {decb(ctx,E)}), // XD
     (2, &|ctx| {ldb(ctx,E,IMM)}), // XE
-
-    (1, &|ctx| {fail(ctx)}), // XF
+    (1, &|ctx| {rra(ctx)}), // XF
 
     // 2X
     (2, &|ctx| {jrf(ctx,Zf,false)}), // X0
