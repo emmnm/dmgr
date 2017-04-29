@@ -184,7 +184,7 @@ impl Lcd {
             if 0x20 & lcd_control > 0x00
                 && window_x >= 0 && window_x <= 166
                 && window_y >= 0 && window_y <= 143 {
-                let window_tilemap_select = if (0x40 & lcd_control) == 0x00
+                6let window_tilemap_select = if (0x40 & lcd_control) == 0x00
                     { 0x9800 } else { 0x9C00 };
                 for sdl_y in window_y..143 {
                     for sdl_x in window_x-7..160 {
@@ -261,81 +261,6 @@ impl Lcd {
                 }
             }
         }).unwrap();
-    }
-
-
-    pub fn render_scanline(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture) {
-        let lcd_control = ctx.gpu().get_lcd_control() as usize;
-        let scanline = ctx.gpu().get_scanline() as usize;
-        let scroll_y = ctx.gpu().get_scroll_y() as usize;
-        let scroll_x = ctx.gpu().get_scroll_x() as usize;
-
-        if lcd_control & 0x80 == 0x00 {
-            return;
-        }
-
-        // Data of tiles themselves.
-        //bit 4 (aka 0x10) & control - bg tile data select where 0 = 8800-97ff, 1 = 8000-8fff
-        // 8000 is used for sprites and background. 0 -255
-        // 8800 can be used for background and window and from -128 to 127
-        let tile_pattern_data = if 0x10 & lcd_control == 0x00 {0x8800} else {0x8000};
-
-        // WHICH TILE DO I USE?
-        //bit 3 (aka 0x08) & control - bg tile map display select where 0=9800-9Bff, 1 = 9C00-9FFF
-        let background_map_addr = if 0x08 & lcd_control == 0x00 { 0x9800 } else {0x9C00};
-
-        texture.with_lock(None, |buffer: &mut [u8], pitch:usize| {
-            if 0x01 & lcd_control > 0x00 {
-                for sdl_x in 0..160 {
-
-                    let world_y = scanline + scroll_y;
-                    let world_x = scroll_x + sdl_x;
-
-                    let tile_idx_y = world_y >> 3;
-                    let tile_idx_x = world_x >> 3;
-
-                    let tile_mem_addr = background_map_addr + (tile_idx_y << 5) + tile_idx_x; //+ (tile_idx_y << 5) + tile_idx_x;
-                    let mut tile = ctx.gpu().read_byte(tile_mem_addr as u16) as usize;
-
-                    // if tile_pattern_table == 0x8800 {
-                    //     // 0 lies around 9000, which is our tile[0x100]
-                    //     tile = (((tile as i8) as i32) + 0x100i32) as usize;
-                    // }
-
-                    let tile_pixel_y = world_y & 0x07;
-                    let tile_pixel_x = 0x07 - (world_x & 0x07);
-
-                    let pixel_mem_addr = (tile_pattern_data + (tile << 4) + (tile_pixel_y << 1));
-                    // println!("tpd{:08X}",tile_pattern_data);
-                    // println!("tile {:08X}",tile << 4);
-                    // println!("y {:08X}",tile_pixel_y << 4);
-                    // println!("{:08X}",pixel_mem_addr);
-                    let high = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
-                    let low = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
-                    let col = ((0x01 & high) << 1) | (0x01 & low);
-
-                    let rgb = COLORS[col as usize].rgb();
-                    buffer[pitch * scanline + 3 * sdl_x + 0] = rgb.0;
-                    buffer[pitch * scanline + 3 * sdl_x + 1] = rgb.1;
-                    buffer[pitch * scanline + 3 * sdl_x + 2] = rgb.2;
-                }
-            }
-        });
-
-                //             let col = self.background_palette[self.tiles[tile][y][x]];
-                //             x += 1;
-                //             if x >= 8 {
-                //                 x = 0;
-                //                 line_offset = (line_offset + 1) & 31; //only 32 tiles.
-                //                 tile = self.vram[(map_offset + row_offset + line_offset) as usize] as usize;
-                //                 if tile_pattern_table == 0x0800 { //
-                //                     //0 lies around 9000 - which is our tile[0x100]
-                //                     tile = (((tile as i8) as i32) + 0x100i32) as usize;
-                //                 }
-                //             }
-                //         }
-                //     }).unwrap();
-                // }
     }
 
 }
