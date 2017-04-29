@@ -182,9 +182,9 @@ impl Lcd {
 
             // window enable.
             if 0x20 & lcd_control > 0x00
-                && window_x >= 0 && window_x <= 166
-                && window_y >= 0 && window_y <= 143 {
-                6let window_tilemap_select = if (0x40 & lcd_control) == 0x00
+                && window_x <= 166
+                && window_y <= 143 {
+                let window_tilemap_select = if (0x40 & lcd_control) == 0x00
                     { 0x9800 } else { 0x9C00 };
                 for sdl_y in window_y..143 {
                     for sdl_x in window_x-7..160 {
