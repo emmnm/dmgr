@@ -13,7 +13,7 @@ mod cart;
 mod cpu;
 mod io;
 
-use constants::{WINDOW_SCALE,CYCLES_PER_SECOND};
+use constants::{WINDOW_SCALE,CYCLES_PER_FRAME};
 use context::Context;
 use cpu::registers::{getb,getw};
 use cpu::mmu::read_byte;
@@ -54,7 +54,7 @@ fn main() {
         /* Run number of cycles required */
         let mut cycle_count = 0;
 
-        while cycle_count < (CYCLES_PER_SECOND) {
+        while cycle_count < (CYCLES_PER_FRAME) {
             //
             let curr_pc = getw(&mut ctx, PC);
             let byte_ins = read_byte(&mut ctx, curr_pc);
@@ -94,16 +94,17 @@ fn main() {
             let cycles = cpu::step(&mut ctx);
             //mmu::step(&mut ctx,&mut renderer, &mut texture, cycles);
             Gpu::step(&mut ctx,cycles);
-            Lcd::step(&mut ctx,&mut renderer,&mut texture,cycles);
+            //Lcd::step(&mut ctx,&mut renderer,&mut texture,cycles);
             Timer::step(&mut ctx,cycles);
             Joypad::step(&mut ctx,&mut event_pump, cycles);
 
             cpu::handle_interrupts(&mut ctx);
             cycle_count += cycles;
         }
+        Lcd::draw(&mut ctx,&mut renderer,&mut texture);
 
         let elapsed = start.elapsed();
-        let loop_time = Duration::from_millis(1000);
+        let loop_time = Duration::from_millis(2 * (1000.0 / 60.0) as u64);
         if loop_time > elapsed {
             let sleep_time = loop_time - elapsed;
 

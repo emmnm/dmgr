@@ -5,9 +5,6 @@ use constants::{WHITE,LIGHT_GRAY,DARK_GRAY,BLACK,COLORS};
 use cart::ByteIO;
 use context::Context;
 
-const MAX_FRAME_SKIP: usize = 2;
-static mut FRAME_SKIP:usize = 0;
-
 pub struct Lcd {
     tiles: Vec<Vec<Vec<usize>>>,
     //sprites: Vec<Sprite>,
@@ -68,18 +65,18 @@ impl ByteIO for Lcd {
 
 impl Lcd {
 
-    pub fn step(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture, cycles: usize) {
+    pub fn step(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture) {
         if ctx.lcd().do_flush {
-            unsafe {
-                if FRAME_SKIP == 0 {
-                    Lcd::render_to_texture(ctx,renderer,texture);
-                    Lcd::flush(ctx,renderer,texture);
-                }
-                FRAME_SKIP = (FRAME_SKIP + 1) % MAX_FRAME_SKIP;
-            }
+            Lcd::draw(ctx,renderer,texture);
         } else if ctx.lcd().do_render_scanline {
+            // no longer supported.
             //Lcd::render_scanline(ctx,renderer,texture)
         }
+    }
+
+    pub fn draw(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture) {
+        Lcd::render_to_texture(ctx,renderer,texture);
+        Lcd::flush(ctx,renderer,texture);
     }
 
     // pub fn print_tile(ctx:&mut Context, tile:usize) {
@@ -145,6 +142,9 @@ impl Lcd {
         let background_map_addr = if 0x08 & lcd_control == 0x00 { 0x9800 } else {0x9C00};
 
         texture.with_lock(None, |buffer: &mut [u8], pitch:usize| {
+            let sizeofbuf: usize = buffer.len();
+
+            let mut mask_buffer: Vec<bool> = vec![false; sizeofbuf];
 
             // BACKGROUND MAP.
             if 0x01 & lcd_control > 0x00 {
@@ -176,6 +176,10 @@ impl Lcd {
                         buffer[pitch * sdl_y + 3 * sdl_x + 0] = rgb.0;
                         buffer[pitch * sdl_y + 3 * sdl_x + 1] = rgb.1;
                         buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
+
+                        if col > 0 {
+                            mask_buffer[pitch * sdl_y + 3 * sdl_x + 0] = true;
+                        }
                     }
                 }
             }
@@ -233,9 +237,9 @@ impl Lcd {
                         for sdl_x in sprite_x..sprite_x+8 {
                             if sdl_y >= 0 && sdl_y < 144 && sdl_x >= 0 && sdl_x < 160 {
                                 let offset = pitch * (sdl_y as usize) + 3 * (sdl_x as usize);
-                                let mut tile_pixel_x = 0x07 & (sdl_x as usize);
-                                let mut tile_pixel_y = 0x07 & (sdl_y as usize);
-                                if (0x20 & sprite_options) == 0x00 {
+                                let mut tile_pixel_x = 0x07 & (sdl_x as usize - sprite_x as usize);
+                                let mut tile_pixel_y = 0x07 & (sdl_y as usize - sprite_y as usize);
+                                if (0x20 & sprite_options) > 0x00 {
                                     tile_pixel_x = 7 - tile_pixel_x;
                                 }
                                 if (0x40 & sprite_options) > 0x00 {
@@ -243,13 +247,16 @@ impl Lcd {
                                 }
 
                                 let pixel_mem_addr = tile_addr + (tile_pixel_y << 1);
-                                let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
-                                let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
+                                let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> (7 - tile_pixel_x);
+                                let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> (7 - tile_pixel_x);
                                 let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
-                                if (0x80 & sprite_options) == 0x00 &&   //draw over.
-                                    col != 0 {
+                                if col != 0 && (
+                                        (0x80 & sprite_options) == 0x00
+                                    || (mask_buffer[offset] == false) ) {
                                         // or previous values written are 1-3 in bg mode.
-                                    let mask = sprite_palette >> (col << 1);
+                                    assert!(col >= 0);
+                                    assert!(col <= 3);
+                                    let mask = sprite_palette >> (2 * col);
                                     let rgb = COLORS[0x03 & mask as usize].rgb();
                                     buffer[offset + 0] = rgb.0;
                                     buffer[offset + 1] = rgb.1;
