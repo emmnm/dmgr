@@ -16,9 +16,7 @@ pub const OPS:[(usize,&'static Fn(&mut Context) -> usize); 256] = [
     (1, &|ctx| {decb(ctx,B)}), // X5
     (1, &|ctx| {ldb(ctx,B,IMM)}), // X6
     (1, &|ctx| {rlca(ctx)}), // X7
-
-    (1, &|ctx| {fail(ctx)}), // X8
-
+    (5, &|ctx| {ldimm_sp(ctx)}), // X8
     (2, &|ctx| {addw(ctx,HL,BC)}), // X9
     (2, &|ctx| {ldb(ctx,A,MEM(BC))}), // XA
     (2, &|ctx| {decw(ctx,BC)}), // XB
@@ -271,9 +269,7 @@ pub const OPS:[(usize,&'static Fn(&mut Context) -> usize); 256] = [
     (4, &|ctx| {push(ctx,HL)}), // X5
     (2, &|ctx| {and(ctx,IMM)}), // X6
     (4, &|ctx| {rst(ctx,0x20)}), // X7
-
-    (1, &|ctx| {fail(ctx)}), // X8
-
+    (4, &|ctx| {add_sp_imm(ctx)}), // X8
     (1, &|ctx| {jphl(ctx)}), // X9
     (4, &|ctx| {ldb(ctx,MEM(DIMM),A)}), // XA
     (1, &|ctx| {invalid(ctx)}), // XB
@@ -291,9 +287,7 @@ pub const OPS:[(usize,&'static Fn(&mut Context) -> usize); 256] = [
     (4, &|ctx| {push(ctx,AF)}), // X5
     (2, &|ctx| {or(ctx,IMM)}), // X6
     (4, &|ctx| {rst(ctx,0x30)}), // X7
-
-    (1, &|ctx| {fail(ctx)}), // X8
-
+    (3, &|ctx| {ldhl_sp_imm(ctx)}), // X8
     (2, &|ctx| {ldw(ctx,SP,HL)}), // X9
     (4, &|ctx| {ldb(ctx,A,MEM(DIMM))}), // XA
     (1, &|ctx| {ei(ctx)}), // XB

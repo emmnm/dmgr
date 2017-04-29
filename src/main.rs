@@ -15,7 +15,8 @@ mod io;
 
 use constants::{WINDOW_SCALE,CYCLES_PER_SECOND};
 use context::Context;
-use cpu::registers::getw;
+use cpu::registers::{getb,getw};
+use cpu::mmu::read_byte;
 use cpu::registers::WordRegister::PC;
 use io::{Gpu,Timer,Lcd,Joypad};
 
@@ -30,7 +31,7 @@ fn main() {
     let sdl_handle = sdl2::init().unwrap();
 
     let video_handle = sdl_handle.video().unwrap();
-    let window = video_handle.window("RGB Emulator",WINDOW_SCALE * 160, WINDOW_SCALE * 144)
+    let window = video_handle.window("DMGR Emulator",WINDOW_SCALE * 160, WINDOW_SCALE * 144)
          .position_centered()
          .opengl()
          .build().unwrap();
@@ -43,7 +44,7 @@ fn main() {
     let mut event_pump = sdl_handle.event_pump().unwrap();
     println!("read cartridge: {:?}",ctx.cart());
 
-    let mut pcbreak = 0x0000;
+    let mut pcbreak = 0xFFFF;
     let mut step = false;
     let mut do_print = false;
     ctx.reset();
@@ -52,14 +53,20 @@ fn main() {
 
         /* Run number of cycles required */
         let mut cycle_count = 0;
+
         while cycle_count < (CYCLES_PER_SECOND) {
             //
             let curr_pc = getw(&mut ctx, PC);
+            let byte_ins = read_byte(&mut ctx, curr_pc);
+            let arg_ins = read_byte(&mut ctx, curr_pc+1);
+            let arg2_ins = read_byte(&mut ctx, curr_pc+2);
+
             if step || do_print {
                 //print!("{:?}",ctx.reg());
             }
             if curr_pc == pcbreak || step {
-                print!("{:?} (0xXXXX/s/c): ",ctx.reg());
+                print!("{:?}\n{:02X} {:02X} {:02X}  (0xXXXX/s/c): ",ctx.reg(),
+                    byte_ins, arg_ins, arg2_ins);
                 std::io::stdout().flush().unwrap();
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();

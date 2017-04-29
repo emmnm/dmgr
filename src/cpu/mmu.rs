@@ -1,18 +1,6 @@
-extern crate sdl2;
-use sdl2::render::Renderer;
-use sdl2::render::Texture;
-
 use context::Context;
 use io::{Lcd,Gpu,Timer,Joypad,Sound};
 use cart::ByteIO;
-
-pub fn step(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture, cycles: usize) {
-    // Gpu::step(ctx,cycles);
-    // Lcd::step(ctx,renderer,texture,cycles);
-    // Timer::step(ctx,cycles);
-    // Joypad::step(ctx,cycles);
-    //Sound::step(ctx,cycles);
-}
 
 pub fn read_byte(ctx:&mut Context, addr: u16) -> u8 {
     let idx = addr as usize;
@@ -82,8 +70,7 @@ pub fn write_byte(ctx:&mut Context, addr:u16, val:u8) {
         },
         0xFF40...0xFF4B => ctx.gpu().write_byte(addr,val),
         0xFF50 => {println!("Leaving bios"); ctx.leave_bios()},
-        //0xFF50 => panic!("Left bios"),
-        0xFF4C...0xFF7F => {}, //empty io.
+        0xFF4C...0xFF7F => {}, //empty io
         0xFF80...0xFFFE => ctx.hram()[idx-0xFF80] = val,
         0xFFFF => ctx.ints().write_enable(val),
         _ => panic!("invalid mmu write addr 0x{:04X}",addr),

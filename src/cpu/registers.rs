@@ -184,7 +184,7 @@ pub fn setw(ctx:&mut Context, r:WordRegister, val:u16) {
     let low = val as u8;
     let high = (val >> 8) as u8;
     match r {
-        WordRegister::AF => { ctx.reg().a = high; ctx.reg().f = low; }
+        WordRegister::AF => { ctx.reg().a = high; ctx.reg().f = 0xF0 & low; }
         WordRegister::BC => { ctx.reg().b = high; ctx.reg().c = low; }
         WordRegister::DE => { ctx.reg().d = high; ctx.reg().e = low; }
         WordRegister::HL => { ctx.reg().h = high; ctx.reg().l = low; }

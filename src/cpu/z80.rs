@@ -15,18 +15,15 @@ pub fn step(ctx: &mut Context) -> usize {
     let mut pc = getw(ctx,PC);
     setw(ctx,PC,pc+1);
     let mut opcode = mmu::read_byte(ctx,pc);
-    // print!("0x{:04X}\t",pc);
 
     let (time, func) = if opcode == 0xCB {
-        // print!("0xCB");
         opcode = mmu::read_byte(ctx,pc+1);
         setw(ctx,PC,pc+2);
         CBOPS[opcode as usize]
     } else {
-        // print!("0x");
         OPS[opcode as usize]
     };
-    // println!("{:02X}",opcode);
+
     unsafe {
         CURR_OP = opcode;
 
@@ -135,12 +132,32 @@ pub fn ldw(ctx: &mut Context, to:WordRegister,from:WordRegister) -> usize {
     0
 }
 
+pub fn ldimm_sp(ctx:&mut Context) -> usize {
+    let addr = getw(ctx,DIMM);
+    let sp = getw(ctx,SP);
+    mmu::write_byte(ctx,addr+0,sp as u8);
+    mmu::write_byte(ctx,addr+1,(sp >> 8) as u8);
+    5
+}
+
+//TODO: Correct these flags!
+pub fn ldhl_sp_imm(ctx:&mut Context) -> usize {
+    let sp = getw(ctx,SP) as i32;
+    let imm = getb(ctx,IMM) as i32;
+    let result = (sp + imm) as u16;
+    setw(ctx,HL,result);
+    setb(ctx,F,0);
+    //setf(ctx,Hf,false);
+    //setf(ctx,Cf,(0xFF & sp));
+    3
+}
+
 pub fn incb(ctx: &mut Context, r: ByteRegister) -> usize {
     let val = getb(ctx,r) as u16;
     setb(ctx,r,(val + 1) as u8);
     setf(ctx,Zf,val == 0xFF);
     setf(ctx,Nf,false);
-    setf(ctx,Hf,0x0F & val + 1 > 0x0F);
+    setf(ctx,Hf,(0x0F & val) + 1 > 0x0F);
     1
 }
 
@@ -199,6 +216,17 @@ pub fn adc(ctx:&mut Context, r:ByteRegister) -> usize {
     1
 }
 
+pub fn add_sp_imm(ctx:&mut Context) -> usize {
+    let imm = getb(ctx,IMM) as i32;
+    let sp = getw(ctx,SP) as i32;
+    let result = (sp + imm) as u16;
+    setw(ctx,SP,result);
+    setb(ctx,F,0);
+    setf(ctx,Hf,(0x0FFF & sp) + (0x0FFF & imm) > 0x0FFF);
+    setf(ctx,Cf,sp + imm > 0x0FFF);
+    4
+}
+
 pub fn sub(ctx:&mut Context, r:ByteRegister) -> usize {
     let (av,rv) = (getb(ctx,A),getb(ctx,r));
     let res = av.wrapping_sub(rv);
@@ -211,14 +239,15 @@ pub fn sub(ctx:&mut Context, r:ByteRegister) -> usize {
 }
 
 pub fn sbc(ctx:&mut Context, r:ByteRegister) -> usize {
-    let av = getb(ctx,A);
-    let rv = getb(ctx,r).wrapping_add(if getf(ctx,Cf) {1} else {0});
-    let result = av.wrapping_sub(rv);
+    let av = getb(ctx,A) as i32;
+    let rv = getb(ctx,r) as i32;
+    let cv = if getf(ctx,Cf) {1} else {0} as i32;
+    let result = (av - rv - cv) as u8;
     setb(ctx,A,result);
-    setf(ctx,Zf, av == rv);
+    setf(ctx,Zf,result == 0x00);
     setf(ctx,Nf,true);
-    setf(ctx,Hf,((av & 0x0f) > (rv & 0x0f)));
-    setf(ctx,Cf,rv > av);
+    setf(ctx,Hf,((0x0F & av) - (0x0F & rv) - cv < 0));
+    setf(ctx,Cf,av - rv - cv < 0);
     1
 }
 
@@ -349,12 +378,12 @@ pub fn rlc(ctx: &mut Context, r:ByteRegister) -> usize {
 }
 
 pub fn rr(ctx: &mut Context, r:ByteRegister) -> usize {
-    let mut value = getb(ctx,r);
-    value >>= 1;
-    if getf(ctx,Cf) { value |= 0x80; }
-    setb(ctx,r,value);
+    let value = getb(ctx,r);
+    let result = (value >> 1) |
+        if getf(ctx,Cf) { 0x80 } else {0x00};
+    setb(ctx,r,result);
     setb(ctx,F,0);
-    setf(ctx,Zf,value == 0x00);
+    setf(ctx,Zf,result == 0x00);
     setf(ctx,Cf,(value & 0x01) > 0x00);
     2
 }

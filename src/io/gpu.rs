@@ -50,9 +50,13 @@ impl Gpu {
     pub fn get_lcd_control(&self) -> u8 { self.lcd_control }
     pub fn get_scroll_y(&self) -> u8 { self.scroll_y }
     pub fn get_scroll_x(&self) -> u8 { self.scroll_x }
+    pub fn get_window_y(&self) -> u8 { self.window_y }
+    pub fn get_window_x(&self) -> u8 { self.window_x }
     pub fn get_scanline(&self) -> u8 { self.scanline }
 
     pub fn get_bg_palette(&self) -> u8 { self.bg_palette }
+    pub fn get_fg_palette_0(&self) -> u8 { self.fg_palette_0 }
+    pub fn get_fg_palette_1(&self) -> u8 { self.fg_palette_1 }
 
     pub fn write_dma(&mut self, data:&[u8]) {
         for idx in 0x00..0xA0 {
@@ -82,6 +86,10 @@ impl ByteIO for Gpu {
             0xFF42 => self.scroll_y,
             0xFF43 => self.scroll_x,
             0xFF44 => self.scanline,
+            0xFF48 => self.fg_palette_0,
+            0xFF49 => self.fg_palette_1,
+            0xFF4A => self.window_y,
+            0xFF4B => self.window_x,
             _ => panic!("invalid gpu read 0x{:04X}",addr),
         }
     }
@@ -180,7 +188,7 @@ impl Gpu {
             ctx.ints().request(0x01);
         }
         if req_lcdstat {
-            //ctx.ints().request(0x02);
+            ctx.ints().request(0x02);
         }
                     // if (0x80 & self.control) == 0x00 {
                     //      self.scanline = 0;

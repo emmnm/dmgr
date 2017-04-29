@@ -5,6 +5,9 @@ use constants::{WHITE,LIGHT_GRAY,DARK_GRAY,BLACK,COLORS};
 use cart::ByteIO;
 use context::Context;
 
+const MAX_FRAME_SKIP: usize = 2;
+static mut FRAME_SKIP:usize = 0;
+
 pub struct Lcd {
     tiles: Vec<Vec<Vec<usize>>>,
     //sprites: Vec<Sprite>,
@@ -67,8 +70,13 @@ impl Lcd {
 
     pub fn step(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture, cycles: usize) {
         if ctx.lcd().do_flush {
-            Lcd::render_to_texture(ctx,renderer,texture);
-            Lcd::flush(ctx,renderer,texture);
+            unsafe {
+                if FRAME_SKIP == 0 {
+                    Lcd::render_to_texture(ctx,renderer,texture);
+                    Lcd::flush(ctx,renderer,texture);
+                }
+                FRAME_SKIP = (FRAME_SKIP + 1) % MAX_FRAME_SKIP;
+            }
         } else if ctx.lcd().do_render_scanline {
             //Lcd::render_scanline(ctx,renderer,texture)
         }
@@ -122,8 +130,12 @@ impl Lcd {
     pub fn render_to_texture(ctx:&mut Context, renderer:&mut Renderer, texture:&mut Texture) {
         let lcd_control = ctx.gpu().get_lcd_control() as usize;
         let bg_palette = ctx.gpu().get_bg_palette() as usize;
+        let fg_palette_0 = ctx.gpu().get_fg_palette_0() as usize;
+        let fg_palette_1 = ctx.gpu().get_fg_palette_1() as usize;
         let scroll_y = ctx.gpu().get_scroll_y() as usize;
         let scroll_x = ctx.gpu().get_scroll_x() as usize;
+        let window_y = ctx.gpu().get_window_y() as usize;
+        let window_x = ctx.gpu().get_window_x() as usize;
 
         if lcd_control & 0x80 == 0x00 {
             return;
@@ -134,90 +146,121 @@ impl Lcd {
 
         texture.with_lock(None, |buffer: &mut [u8], pitch:usize| {
 
-            // turn on disabling background.
-            for sdl_y in 0..143 {
+            // BACKGROUND MAP.
+            if 0x01 & lcd_control > 0x00 {
+                for sdl_y in 0..143 {
+                    for sdl_x in 0..160 {
+                        let world_y = (sdl_y + scroll_y) % 256;
+                        let world_x = (scroll_x + sdl_x) % 256;
+                        let tile_idx_y = world_y >> 3;
+                        let tile_idx_x = world_x >> 3;
+                        let tile_pixel_y = world_y & 0x07;
+                        let tile_pixel_x = 0x07 - (world_x & 0x07);
 
-                for sdl_x in 0..160 {
-                    let world_y = (sdl_y + scroll_y) % 256;
-                    let world_x = (scroll_x + sdl_x) % 256;
-                    let tile_idx_y = world_y >> 3;
-                    let tile_idx_x = world_x >> 3;
-                    let tile_pixel_y = world_y & 0x07;
-                    let tile_pixel_x = 0x07 - (world_x & 0x07);
+                        let tile_mem_addr = background_map_addr + (tile_idx_y << 5) + tile_idx_x;
+                        let mut tile = ctx.gpu().read_byte(tile_mem_addr as u16) as usize;
 
-                    let tile_mem_addr = background_map_addr + (tile_idx_y << 5) + tile_idx_x;
-                    let mut tile = ctx.gpu().read_byte(tile_mem_addr as u16) as usize;
+                        let mut pixel_mem_addr = if tile_pattern_data == 0x8800 {
+                            ((0x9000 as i32) +
+                                (((tile as i8) as i32) << 4)) as usize
+                        } else {
+                            ((tile << 4) + tile_pattern_data)
+                        };
 
-                    let mut pixel_mem_addr = if tile_pattern_data == 0x8800 {
-                        ((0x9000 as i32) +
-                            (((tile as i8) as i32) << 4)) as usize
-                    } else {
-                        ((tile << 4) + tile_pattern_data)
-                    };
-
-                    pixel_mem_addr += (tile_pixel_y << 1);
-                    let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
-                    let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
-                    let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
-                    let mask = bg_palette >> (col << 1);
-                    let rgb = COLORS[0x03 & mask as usize].rgb();
-                    buffer[pitch * sdl_y + 3 * sdl_x + 0] = rgb.0;
-                    buffer[pitch * sdl_y + 3 * sdl_x + 1] = rgb.1;
-                    buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
+                        pixel_mem_addr += (tile_pixel_y << 1);
+                        let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
+                        let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
+                        let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
+                        let mask = bg_palette >> (col << 1);
+                        let rgb = COLORS[0x03 & mask as usize].rgb();
+                        buffer[pitch * sdl_y + 3 * sdl_x + 0] = rgb.0;
+                        buffer[pitch * sdl_y + 3 * sdl_x + 1] = rgb.1;
+                        buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
+                    }
                 }
             }
-            //
-            // if 0x02 & lcd_control > 0x00 {
-            //     for idx in 0..40 { //40 sprites in OAM.
-            //         let sprite_addr = (0xFE00 + (idx << 2)) as u16; //4B wide.
-            //         let sprite_y = (ctx.gpu().read_byte(sprite_addr) as i32 - 16) as isize;
-            //         let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as isize;
-            //
-            //         for sdl_y in sprite_y..sprite_y+8 {
-            //             for sdl_x in sprite_x..sprite_x+8 {
-            //                 if sdl_y < 144 && sdl_x < 160 {
-            //                     let offset = (pitch as isize) * sdl_y + 3 * sdl_x;
-            //                     let offset2 = offset as usize;
-            //                     buffer[offset2 + 0] = 0xCC;
-            //                     buffer[offset2 + 1] = 0xCC;
-            //                     buffer[offset2 + 2] = 0xCC;
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
 
-//             if self.control & 0x02 > 0x00 {
-//     ctx.texture.with_lock(None, |buffer: &mut [u8], pitch: usize| {
-//         for idx in 0..40 {
-//
-//             if sy <= self.scanline as i32 && (sy+8) > self.scanline as i32 {
-//
-//                 let ref palette = if sprite.palette_flag {self.foreground_palette[1]} else {self.foreground_palette[0]};
-//                 let tilerow = if sprite.flip_y {7 - (self.scanline as i32 - sy)} else {self.scanline as i32 - sy};
-//                 for x in 0..8 {
-//                     if sx + x >= 0 && sx+x < 160 {
-//
-//                         let offset = ((self.scanline as i32) * (pitch as i32) + ((sx + x) as i32 * 3)) as usize;
-//                         let lookup_x = if sprite.flip_x { 7 - x} else {x } as usize;
-//                         let lookup_y = tilerow as usize; //if sprite.flip_y { 7 - tilerow} else {tilerow} as usize;
-//                         let col = palette[self.tiles[sprite.tile as usize][lookup_y][lookup_x] as usize];
-//                         // sprite data 00 is transparent.
-//                         if col != 0 {
-//                             let rgb = COLORS[col as usize].rgb();
-//                             buffer[offset + 0] = rgb.0;
-//                             buffer[offset + 1] = rgb.1;
-//                             buffer[offset + 2] = rgb.2;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }).unwrap();
-// }
+            // window enable.
+            if 0x20 & lcd_control > 0x00
+                && window_x >= 0 && window_x <= 166
+                && window_y >= 0 && window_y <= 143 {
+                let window_tilemap_select = if (0x40 & lcd_control) == 0x00
+                    { 0x9800 } else { 0x9C00 };
+                for sdl_y in window_y..143 {
+                    for sdl_x in window_x-7..160 {
+                        let world_y = sdl_y as usize - (window_y); //(sdl_y + scroll_y) % 256;
+                        let world_x = sdl_x as usize - (window_x - 7); //(scroll_x + sdl_x) % 256;
+                        let tile_idx_y = world_y >> 3;
+                        let tile_idx_x = world_x >> 3;
+                        let tile_pixel_y = world_y & 0x07;
+                        let tile_pixel_x = 0x07 - (world_x & 0x07);
 
+                        let tile_mem_addr = window_tilemap_select + (tile_idx_y << 5) + tile_idx_x;
+                        let mut tile = ctx.gpu().read_byte(tile_mem_addr as u16) as usize;
 
-        });
+                        let mut pixel_mem_addr =
+                             ((0x9000 as i32) +
+                                 (((tile as i8) as i32) << 4)) as usize;
+                        pixel_mem_addr += (tile_pixel_y << 1);
+                        let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
+                        let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
+                        let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
+                        let mask = bg_palette >> (col << 1);
+                        let rgb = COLORS[0x03 & mask as usize].rgb();
+                        buffer[pitch * sdl_y + 3 * sdl_x + 0] = rgb.0;
+                        buffer[pitch * sdl_y + 3 * sdl_x + 1] = rgb.1;
+                        buffer[pitch * sdl_y + 3 * sdl_x + 2] = rgb.2;
+                    }
+                }
+
+            }
+
+            // FOREGROUND SPRITES SIMPLE
+            if 0x02 & lcd_control > 0x00 {
+                for idx in 0..40 {
+                    let sprite_addr = (0xFE00 + (idx << 2)) as u16; //4B wide.
+                    let sprite_y = (ctx.gpu().read_byte(sprite_addr+0) as i32 - 16) as isize;
+                    let sprite_x = (ctx.gpu().read_byte(sprite_addr+1) as i32 - 8) as isize;
+                    let sprite_tile = ctx.gpu().read_byte(sprite_addr+2) as usize;
+                    let sprite_options = ctx.gpu().read_byte(sprite_addr+3);
+                    let sprite_palette = if (0x10 & sprite_options) > 0x00
+                        {fg_palette_1} else {fg_palette_0};
+                    //CHECK 8x16 MODE.
+
+                    let tile_addr = 0x8000 + (sprite_tile << 4);
+
+                    for sdl_y in sprite_y..sprite_y+8 {
+                        for sdl_x in sprite_x..sprite_x+8 {
+                            if sdl_y >= 0 && sdl_y < 144 && sdl_x >= 0 && sdl_x < 160 {
+                                let offset = pitch * (sdl_y as usize) + 3 * (sdl_x as usize);
+                                let mut tile_pixel_x = 0x07 & (sdl_x as usize);
+                                let mut tile_pixel_y = 0x07 & (sdl_y as usize);
+                                if (0x20 & sprite_options) == 0x00 {
+                                    tile_pixel_x = 7 - tile_pixel_x;
+                                }
+                                if (0x40 & sprite_options) > 0x00 {
+                                    tile_pixel_y = 7 - tile_pixel_y;
+                                }
+
+                                let pixel_mem_addr = tile_addr + (tile_pixel_y << 1);
+                                let low = ctx.gpu().read_byte(pixel_mem_addr as u16) >> tile_pixel_x;
+                                let high = ctx.gpu().read_byte(pixel_mem_addr as u16 +1) >> tile_pixel_x;
+                                let col = ((0x01 & high) << 1) | (0x01 & low); //0,1,2,3,4
+                                if (0x80 & sprite_options) == 0x00 &&   //draw over.
+                                    col != 0 {
+                                        // or previous values written are 1-3 in bg mode.
+                                    let mask = sprite_palette >> (col << 1);
+                                    let rgb = COLORS[0x03 & mask as usize].rgb();
+                                    buffer[offset + 0] = rgb.0;
+                                    buffer[offset + 1] = rgb.1;
+                                    buffer[offset + 2] = rgb.2;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }).unwrap();
     }
 
 

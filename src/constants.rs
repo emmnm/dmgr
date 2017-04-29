@@ -3,7 +3,7 @@
 //!
 use sdl2::pixels::Color;
 
-pub const CYCLES_PER_SECOND: usize = 4194304;
+pub const CYCLES_PER_SECOND: usize = 4194304 >> 2;
 pub const CYCLES_PER_FRAME: usize = 69905;
 pub const WINDOW_SCALE: u32 = 2;
 
